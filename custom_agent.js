@@ -5,6 +5,9 @@ import { tool } from "@langchain/core/tools";
 import { TavilySearch } from "@langchain/tavily";
 import z from 'zod';
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
+import {MemorySaver} from "@langchain/langgraph";
+import readline from 'node:readline/promises'
+
 
   const search = new TavilySearch({
     maxResults: 3,
@@ -54,7 +57,7 @@ const llm = new ChatGroq({
 
 async function callModel(state){
     
-    console.log('calling the llm')
+    // console.log('calling the llm')
     const response = await llm.invoke(state.messages);  //state is just like a message array of current prompt
     // console.log('Response in callMode: ', response);
     return {messages: [response]}; //the data which is return from here is get added to the state  
@@ -67,18 +70,41 @@ const graph = new StateGraph(MessagesAnnotation)
 .addNode('tools', toolNode)
 .addEdge('__start__', 'llm')
 .addEdge('tools', 'llm')
-.addConditionalEdges('llm', shouldContinue);
+.addConditionalEdges('llm', shouldContinue,{
+    __end__:END,
+    tools:'tools'
+});
 
+const checkpointer = new MemorySaver();
 
-const app = graph.compile();
+const app = graph.compile({checkpointer});
+
 
 
 async function main(){
-    const result = await app.invoke({
-        messages: [{role:'user', content:'What is the current weather of Pune'}]   //inital message the prompt of the user
-    })
 
-    console.log(result.messages[result.messages.length-1].content);
+    let config = {configurable: {thread_id:'1'}}
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+
+    while(true){
+
+        const question = await rl.question('You : ');
+            if(question === 'exit' || question === 'quit'){
+                break;
+            }
+        const result = await app.invoke({
+            messages: [
+            {role:'user', content:question},
+        ]  
+        },
+             config
+        )
+        
+        console.log(result.messages[result.messages.length-1].content);
+
+    }
+    rl.close();
+
 }
 
 main();
